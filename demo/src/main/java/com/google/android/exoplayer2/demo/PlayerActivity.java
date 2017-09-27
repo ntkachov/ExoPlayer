@@ -48,6 +48,8 @@ import com.google.android.exoplayer2.drm.FrameworkMediaCrypto;
 import com.google.android.exoplayer2.drm.FrameworkMediaDrm;
 import com.google.android.exoplayer2.drm.HttpMediaDrmCallback;
 import com.google.android.exoplayer2.drm.UnsupportedDrmException;
+import com.google.android.exoplayer2.ext.ima.ImaAdsLoader;
+import com.google.android.exoplayer2.ext.ima.ImaAdsMediaSource;
 import com.google.android.exoplayer2.extractor.DefaultExtractorsFactory;
 import com.google.android.exoplayer2.mediacodec.MediaCodecRenderer.DecoderInitializationException;
 import com.google.android.exoplayer2.mediacodec.MediaCodecUtil.DecoderQueryException;
@@ -128,7 +130,7 @@ public class PlayerActivity extends Activity implements OnClickListener, EventLi
 
   // Fields used only for ad playback. The ads loader is loaded via reflection.
 
-  private Object imaAdsLoader; // com.google.android.exoplayer2.ext.ima.ImaAdsLoader
+  private ImaAdsLoader imaAdsLoader; // com.google.android.exoplayer2.ext.ima.ImaAdsLoader
   private Uri loadedAdTagUri;
   private ViewGroup adOverlayViewGroup;
 
@@ -449,28 +451,19 @@ public class PlayerActivity extends Activity implements OnClickListener, EventLi
   private MediaSource createAdsMediaSource(MediaSource mediaSource, Uri adTagUri) throws Exception {
     // Load the extension source using reflection so the demo app doesn't have to depend on it.
     // The ads loader is reused for multiple playbacks, so that ad playback can resume.
-    Class<?> loaderClass = Class.forName("com.google.android.exoplayer2.ext.ima.ImaAdsLoader");
     if (imaAdsLoader == null) {
-      imaAdsLoader = loaderClass.getConstructor(Context.class, Uri.class)
-          .newInstance(this, adTagUri);
+      imaAdsLoader = new ImaAdsLoader(this, adTagUri);
       adOverlayViewGroup = new FrameLayout(this);
       // The demo app has a non-null overlay frame layout.
       simpleExoPlayerView.getOverlayFrameLayout().addView(adOverlayViewGroup);
     }
-    Class<?> sourceClass =
-        Class.forName("com.google.android.exoplayer2.ext.ima.ImaAdsMediaSource");
-    Constructor<?> constructor = sourceClass.getConstructor(MediaSource.class,
-        DataSource.Factory.class, loaderClass, ViewGroup.class);
-    return (MediaSource) constructor.newInstance(mediaSource, mediaDataSourceFactory, imaAdsLoader,
-        adOverlayViewGroup);
+    return new ImaAdsMediaSource(mediaSource, mediaDataSourceFactory, imaAdsLoader, adOverlayViewGroup);
   }
 
   private void releaseAdsLoader() {
     if (imaAdsLoader != null) {
       try {
-        Class<?> loaderClass = Class.forName("com.google.android.exoplayer2.ext.ima.ImaAdsLoader");
-        Method releaseMethod = loaderClass.getMethod("release");
-        releaseMethod.invoke(imaAdsLoader);
+        imaAdsLoader.release();
       } catch (Exception e) {
         // Should never happen.
         throw new IllegalStateException(e);
@@ -490,6 +483,9 @@ public class PlayerActivity extends Activity implements OnClickListener, EventLi
 
   @Override
   public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
+    if(playbackState == Player.STATE_READY) {
+        player.seekTo(1000);
+    }
     if (playbackState == Player.STATE_ENDED) {
       showControls();
     }
